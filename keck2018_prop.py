@@ -26,7 +26,10 @@ for date in dates:
         if sn.plotted is True:
             label.append(sn.name)
     ofile.close()
-    ax.legend(label, bbox_to_anchor=(1.15, 1), fontsize='x-small')
+    ax = choose_targets.add_airmass_axis(ax)
+    ax = choose_targets.add_twilight(ax, observatory, date)
+    label.append('12deg twilight')
+    ax.legend(label, bbox_to_anchor=(1.10, 1), fontsize='x-small')
     ax.grid()
     ax.set_title('{} {}'.format(date, observatory))
     plt.savefig('{}_{}_visibility.pdf'.format(date, observatory), orientation='landscape')

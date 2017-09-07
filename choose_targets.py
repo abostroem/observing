@@ -1,6 +1,9 @@
 import numpy as np
 
 from matplotlib import pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib import dates
+
 from cycler import cycler
 
 from astropy import units as U
@@ -24,10 +27,11 @@ cycler_ls = cycler(color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
                               '#bcbd22', '#17becf', '#90EE90', '#808000',
                               'Navy', 'm', '#DAA520', 'k', '#3CB371']*2)
 
+
 import supernova_typeII_catalog
 
 class target(object):
-    def __init__(self,name, date):
+    def __init__(self,name, date, age_lim = 550, mag_lim=24):
         self.name = name
         self.date = Time(date)
         self.mag = None
@@ -35,12 +39,61 @@ class target(object):
         self.visibility = None
         self.visibility_rating = None
         self.plotted = None
+        self.age_lim = age_lim
+        self.mag_lim = mag_lim
         
 
 def calc_airmass(observer, time, target):
     airmass = observer.altaz(time, target).secz
     masked_airmass = np.ma.array(airmass, mask=airmass<1)
     return masked_airmass
+
+def plot_visibility(target, observatory, time, ax=None):
+    '''
+    time is assumed to be an array of astropy time objects
+    observer is an astroplan observer
+    target is an astroplan fixed target
+    '''
+    if not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
+    altitude = observatory.altaz(time, target).alt
+    ax.plot_date(time.plot_date, altitude, label=target.name, fmt='-')
+    
+    date_formatter = dates.DateFormatter('%H:%M')
+    ax.xaxis.set_major_formatter(date_formatter)
+    plt.setp(ax.get_xticklabels(), rotation=30, ha='right', fontsize='x-small')   
+    plt.setp(ax.get_yticklabels(), fontsize='x-small')   
+    ax.set_ylim(5, 90)
+    ax.set_ylabel('Altitude (deg)')
+    ax.set_xlabel('Time (UTC)')
+    return ax
+    
+def add_airmass_axis(ax):
+    ylim = ax.get_ylim()
+    yticks = ax.get_yticks()
+    yticks_rad = (yticks*U.deg).to(U.radian).value
+    ax_airmass = ax.twinx()
+    ax_airmass.set_yticks(yticks)
+    ax_airmass.set_ylim(ylim)
+    y = 1/np.sin(yticks_rad+0.000001)
+    y_txt = ['{:.2f}'.format(itick) for itick in y]
+    ax_airmass.set_yticklabels(y_txt, fontsize='x-small') #z = cos(90-alt) = sin(alt)
+    ax.grid(b=True)
+    ax_airmass.set_ylabel('Airmass')
+    ax_airmass.yaxis.set_label_coords(1.10, 0.2)
+    return ax
+
+def add_twilight(ax, observatory, date):
+    date = Time(date)
+    observatory = Observer.at_site(observatory)
+    start = observatory.twilight_evening_nautical(date)
+    end = observatory.twilight_morning_nautical(date+1*U.day)
+    ylim = ax.get_ylim()
+    ax.plot_date([start.plot_date, start.plot_date], ylim, 'k:')
+    ax.plot_date([end.plot_date, end.plot_date], ylim, 'k:', label='twilight')
+    return ax
+    
 
 def calc_mag_age(sn):
     #Assume SN is 100 days old at fall from plateau
@@ -84,9 +137,9 @@ def calc_mag_age(sn):
 def check_visibility(sn, observatory, ax):
     tbdata = supernova_typeII_catalog.get_cat()
     observatory = Observer.at_site(observatory)
-    night_start = observatory.twilight_evening_astronomical(sn.date)
-    night_end = observatory.twilight_morning_astronomical(sn.date+1*U.day)
-    time_arr = Time(np.linspace(night_start.value, night_end.value, 500), format='jd')
+    night_start = observatory.twilight_evening_nautical(sn.date)
+    night_end = observatory.twilight_morning_nautical(sn.date+1*U.day)
+    time_arr = Time(np.linspace((night_start - 30*U.minute).value, (night_end+30*U.minute).value, 500), format='jd')
     indx = tbdata['SN'] == sn.name
     row = tbdata[indx]
     coords = SkyCoord('{} {}'.format(row['RA'].data[0], row['DEC'].data[0]), unit=(U.hourangle, U.deg))
@@ -100,18 +153,18 @@ def check_visibility(sn, observatory, ax):
         elif airmass.min() >1: sn.visibility_rating = 2
         else: sn.visibility_rating = 1
         if (sn.age is None) and (sn.mag is None):
-            ax = plot_airmass(targ, observatory, time_arr, altitude_yaxis=True, ax=ax)
+            ax = plot_visibility(targ, observatory, time_arr, ax=ax)
             sn.plotted = True
         else:
-            if (sn.age.value > 75) and (sn.age.value < 550):
-                if sn.mag < 24.1:
-                    ax = plot_airmass(targ, observatory, time_arr, altitude_yaxis=True, ax=ax)
+            if (sn.age.value > 75) and (sn.age.value < sn.age_lim):
+                if sn.mag < sn.mag_lim:
+                    ax = plot_visibility(targ, observatory, time_arr, ax=ax)
                     sn.plotted = True
     return sn, ax
 
 def write_output_table(ofile, sn):
-    if (sn.age.value > 75) and (sn.age.value < 550):
-        if sn.mag < 24.1:
+    if (sn.age.value > 75) and (sn.age.value < sn.age_lim):
+        if sn.mag < sn.mag_lim:
             if sn.visibility is True:
                 ofile.write('#########################\n')
                 ofile.write('{}; VISIBILITY={}\n'.format(sn.name, sn.visibility_rating))
