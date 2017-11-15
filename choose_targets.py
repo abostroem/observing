@@ -31,7 +31,7 @@ cycler_ls = cycler(color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
 import supernova_typeII_catalog
 
 class target(object):
-    def __init__(self,name, date, age_lim = 550, mag_lim=24):
+    def __init__(self,name, date, age_lim = 550, mag_lim=24, ra=None, dec=None):
         self.name = name
         self.date = Time(date)
         self.mag = None
@@ -41,6 +41,8 @@ class target(object):
         self.plotted = None
         self.age_lim = age_lim
         self.mag_lim = mag_lim
+        self.ra = ra
+        self.dec = dec
         
 
 def calc_airmass(observer, time, target):
@@ -135,6 +137,9 @@ def calc_mag_age(sn):
 
 
 def check_visibility(sn, observatory, ax):
+    '''
+    RA and DEC should be in this format: 02:35:30.15 -09:21:15.0
+    '''
     tbdata = supernova_typeII_catalog.get_cat()
     observatory = Observer.at_site(observatory)
     night_start = observatory.twilight_evening_nautical(sn.date)
@@ -142,7 +147,10 @@ def check_visibility(sn, observatory, ax):
     time_arr = Time(np.linspace((night_start - 30*U.minute).value, (night_end+30*U.minute).value, 500), format='jd')
     indx = tbdata['SN'] == sn.name
     row = tbdata[indx]
-    coords = SkyCoord('{} {}'.format(row['RA'].data[0], row['DEC'].data[0]), unit=(U.hourangle, U.deg))
+    if sn.ra is None and sn.dec is None:
+        coords = SkyCoord('{} {}'.format(row['RA'].data[0], row['DEC'].data[0]), unit=(U.hourangle, U.deg))
+    else:
+        coords = SkyCoord('{} {}'.format(sn.ra, sn.dec), unit=(U.hourangle, U.deg))
     targ = FixedTarget(name=sn.name, coord = coords)
     if np.array(observatory.target_is_up(time_arr, targ)).any():
         sn.visibility = True
