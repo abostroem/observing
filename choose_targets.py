@@ -117,7 +117,7 @@ def calc_mag_age(sn):
     else:
         is_visible = sn.visibility
     if is_visible is True:
-        if not row['end_plateau_date'].mask: #Skip masked data
+        if not hasattr(row['end_plateau_date'],'mask'): #Skip masked data
             #Calculate the explosion time
             t_expl = Time(row['end_plateau_date'], format='isot')-t_plateau
             #Calculate the time on the Ni decay tail for the beginning and ending of the semester
