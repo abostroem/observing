@@ -22,16 +22,18 @@ from supernova import LightCurve
 Used for Keck proposal 2018A
 '''
 
-cycler_ls = cycler(color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', 
+cycler_color = cycler(color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', 
                               '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
                               '#bcbd22', '#17becf', '#90EE90', '#808000',
-                              'Navy', 'm', '#DAA520', 'k', '#3CB371']*2)
+                              'Navy', 'm', '#DAA520', 'k', '#3CB371'])
+cycler_ls = cycler(linestyle=['-', '--', ':'])
+combine_cycler = cycler_ls*cycler_color
 
 
 import supernova_typeII_catalog
 
 class target(object):
-    def __init__(self,name, date, age_lim = 550, mag_lim=24, ra=None, dec=None):
+    def __init__(self,name, date, age_lim = 550, mag_lim=24, age_min=75., ra=None, dec=None):
         self.name = name
         self.date = Time(date)
         self.mag = None
@@ -43,6 +45,7 @@ class target(object):
         self.mag_lim = mag_lim
         self.ra = ra
         self.dec = dec
+        self.age_min = age_min
         
 
 def calc_airmass(observer, time, target):
@@ -50,7 +53,7 @@ def calc_airmass(observer, time, target):
     masked_airmass = np.ma.array(airmass, mask=airmass<1)
     return masked_airmass
 
-def plot_visibility(target, observatory, time, ax=None):
+def plot_visibility(target, observatory, time, ax=None, fmt={'color':None, 'linestyle':'-'}):
     '''
     time is assumed to be an array of astropy time objects
     observer is an astroplan observer
@@ -60,12 +63,12 @@ def plot_visibility(target, observatory, time, ax=None):
         fig = plt.figure()
         ax = fig.add_subplot(1,1,1)
     altitude = observatory.altaz(time, target).alt
-    ax.plot_date(time.plot_date, altitude, label=target.name, fmt='-')
+    ax.plot_date(time.plot_date, altitude, label=target.name, color=fmt['color'], ls=fmt['linestyle'], marker='None')
     
     date_formatter = dates.DateFormatter('%H:%M')
     ax.xaxis.set_major_formatter(date_formatter)
     plt.setp(ax.get_xticklabels(), rotation=30, ha='right', fontsize='x-small')   
-    plt.setp(ax.get_yticklabels(), fontsize='x-small')   
+    plt.setp(ax.get_yticklabels(), fontsize='x-small') 
     ax.set_ylim(5, 90)
     ax.set_ylabel('Altitude (deg)')
     ax.set_xlabel('Time (UTC)')
@@ -81,9 +84,9 @@ def add_airmass_axis(ax):
     y = 1/np.sin(yticks_rad+0.000001)
     y_txt = ['{:.2f}'.format(itick) for itick in y]
     ax_airmass.set_yticklabels(y_txt, fontsize='x-small') #z = cos(90-alt) = sin(alt)
-    ax.grid(b=True)
     ax_airmass.set_ylabel('Airmass')
     ax_airmass.yaxis.set_label_coords(1.10, 0.2)
+    ax_airmass.grid(color='WhiteSmoke')  
     return ax
 
 def add_twilight(ax, observatory, date):
@@ -136,7 +139,7 @@ def calc_mag_age(sn):
     return sn
 
 
-def check_visibility(sn, observatory, ax):
+def check_visibility(sn, observatory, ax, fmt='-'):
     '''
     RA and DEC should be in this format: 02:35:30.15 -09:21:15.0
     '''
@@ -161,13 +164,14 @@ def check_visibility(sn, observatory, ax):
         elif airmass.min() >1: sn.visibility_rating = 2
         else: sn.visibility_rating = 1
         if (sn.age is None) and (sn.mag is None):
-            ax = plot_visibility(targ, observatory, time_arr, ax=ax)
+            ax = plot_visibility(targ, observatory, time_arr, ax=ax, fmt=fmt)
+            ax.grid(True, color='WhiteSmoke')  
             sn.plotted = True
         else:
-            if (sn.age.value > 75) and (sn.age.value < sn.age_lim):
+            if (sn.age.value > sn.age_min) and (sn.age.value < sn.age_lim):
                 if sn.mag < sn.mag_lim:
-                    ax = plot_visibility(targ, observatory, time_arr, ax=ax)
-                    sn.plotted = True
+                    ax = plot_visibility(targ, observatory, time_arr, ax=ax, fmt=fmt)
+                    sn.plotted = True    
     return sn, ax
 
 def write_output_table(ofile, sn):
